@@ -43,7 +43,8 @@ ALLOWED_ORIGINS.update(o for o in os.environ.get("ALLOWED_ORIGINS", "").split(",
 # Only plain system headers like <stdlib.h>. Quoted, absolute or ../ includes
 # could make clang read local files and echo them back in its diagnostics.
 SAFE_INCLUDE = re.compile(r"^\s*#\s*include\s*<[A-Za-z0-9_]+(/[A-Za-z0-9_]+)*\.h>\s*$")
-DIRECTIVE = re.compile(r"^\s*#\s*(include|include_next|import|embed)\b|__has_include|__has_embed")
+DIRECTIVE = re.compile(r"^\s*(#|%:)\s*(include|include_next|import|embed)\b|__has_include|__has_embed")
+SYSTEM_HEADER_DIRS = ("/usr/include/", "/usr/lib/", "/usr/local/include/", "/opt/homebrew/", "/Library/Developer/")
 
 
 def check_source(source):
@@ -74,6 +75,19 @@ def analyze_source(source):
     try:
         with open(os.path.join(work, "input.c"), "w", encoding="utf-8") as f:
             f.write(source)
+
+        # Second include guard, immune to comment and line-splice tricks:
+        # ask the preprocessor which files the source pulls in.
+        deps = run_step([CLANG, "-M", "-fno-caret-diagnostics", "input.c"], work)
+        if deps.returncode != 0:
+            own = [l for l in deps.stderr.splitlines() if l.startswith("input.c:")]
+            return {"status": "error", "stage": "preprocess",
+                    "error": trim("\n".join(own)) or "preprocessing failed"}
+        files = deps.stdout.replace("\\\n", " ").split(":", 1)[-1].split()
+        for path in files:
+            if path != "input.c" and not os.path.realpath(path).startswith(SYSTEM_HEADER_DIRS):
+                return {"status": "error", "stage": "validate",
+                        "error": "only system headers like <stdlib.h> may be included"}
 
         # -disable-O0-optnone lets mem2reg run on -O0 output.
         clang = run_step([

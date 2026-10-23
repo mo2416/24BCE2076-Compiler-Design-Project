@@ -52,6 +52,7 @@ def main():
             ("safe", SAFE, "clean"),
             ("invalid C", INVALID, "error"),
             ("file include blocked", '#include "/etc/passwd"\nint main(void){return 0;}\n', "error"),
+            ("spliced include blocked", '#inc\\\nlude "/etc/hostname"\nint main(void){return 0;}\n', "error"),
         ]:
             res = post(src)
             ok = res.get("status") == expected
@@ -65,7 +66,7 @@ def main():
         print(("PASS" if ok else "FAIL"), "index.html served")
         failures += 0 if ok else 1
 
-        print(f"\n{5 - failures} passed, {failures} failed")
+        print(f"\n{6 - failures} passed, {failures} failed")
         return 1 if failures else 0
     finally:
         proc.terminate()
