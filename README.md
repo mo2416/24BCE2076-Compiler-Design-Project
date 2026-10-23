@@ -35,7 +35,7 @@ If the tools are named `clang-21` and `opt-21`, set them first: `export CLANG=cl
 
 ```text
 browser (web/)  --POST /api/analyze-->  server.py (127.0.0.1 only)
-                                          |  clang -M          check included files
+                                          |  clang -MM         check included files
                                           |  clang -S -emit-llvm -O0 -g -Xclang -disable-O0-optnone
                                           |  opt -passes=mem2reg
                                           v
@@ -43,7 +43,7 @@ browser (web/)  --POST /api/analyze-->  server.py (127.0.0.1 only)
 ```
 
 - `src/taint_analyzer.cpp`: parses the `.ll` with `parseIRFile`, seeds taint on `getenv()` call results, propagates to a fixpoint over value-producing instructions and PHI nodes, keeps a provenance link per tainted value, and reconstructs the source-to-sink path with a cycle guard. Variable names come from the `#dbg_value` records; missing line info prints `line unknown`, never 0.
-- `server.py`: Python standard library only. Validates the request, runs the three tool steps with argument lists (`shell=False`) and a 15 s timeout each, returns the analyzer JSON. 20 KB source limit. Binds to `127.0.0.1`, checks the `Host` header, and only allows system headers to be included (checked by text and again with `clang -M`), so the endpoint cannot be used to read local files.
+- `server.py`: Python standard library only. Validates the request, runs the three tool steps with argument lists (`shell=False`) and a 15 s timeout each, returns the analyzer JSON. 20 KB source limit. Binds to `127.0.0.1`, checks the `Host` header, and only allows system headers to be included (checked by text and again with `clang -MM`; `#embed` and `__has_include` are refused), so the endpoint cannot be used to read local files.
 - `web/`: plain HTML, CSS and JavaScript. Shows Potential finding, No tainted flow detected, or Analysis error. An error is never shown as a clean result.
 
 ## Test results
@@ -60,7 +60,7 @@ PASS T06_both_clean: clean
 6 passed, 0 failed
 ```
 
-Integration check through `/api/analyze`: vulnerable example gives a CWE-78 finding, safe example gives no finding, invalid C gives an error, quoted and line-spliced file includes are rejected, and the page is served. 6 passed, 0 failed.
+Integration check through `/api/analyze`: vulnerable example gives a CWE-78 finding, safe example gives no finding, invalid C gives an error, quoted and line-spliced file includes and `#embed` are rejected, and the page is served. 7 passed, 0 failed.
 
 Six hand-written tests show the rules work as designed. They do not measure real-world accuracy.
 
