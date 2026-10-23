@@ -10,6 +10,7 @@ Run:  python3 server.py            (http://127.0.0.1:8000)
 
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -39,6 +40,20 @@ ALLOWED_ORIGINS = {
 ALLOWED_ORIGINS.update(o for o in os.environ.get("ALLOWED_ORIGINS", "").split(",") if o)
 
 
+# Only plain system headers like <stdlib.h>. Quoted, absolute or ../ includes
+# could make clang read local files and echo them back in its diagnostics.
+SAFE_INCLUDE = re.compile(r"^\s*#\s*include\s*<[A-Za-z0-9_]+(/[A-Za-z0-9_]+)*\.h>\s*$")
+DIRECTIVE = re.compile(r"^\s*#\s*(include|include_next|import|embed)\b|__has_include|__has_embed")
+
+
+def check_source(source):
+    """Return an error message if the source uses a disallowed directive."""
+    for n, line in enumerate(source.splitlines(), 1):
+        if DIRECTIVE.search(line) and not SAFE_INCLUDE.match(line):
+            return f"line {n}: only system headers like #include <stdlib.h> are allowed"
+    return None
+
+
 def run_step(args, cwd):
     """Run one pipeline step with an argument list (never a shell)."""
     return subprocess.run(
@@ -64,7 +79,7 @@ def analyze_source(source):
         clang = run_step([
             CLANG, "-S", "-emit-llvm", "-O0", "-g",
             "-Xclang", "-disable-O0-optnone",
-            "-fno-discard-value-names",
+            "-fno-discard-value-names", "-fno-caret-diagnostics",
             "input.c", "-o", "input.ll",
         ], work)
         if clang.returncode != 0:
@@ -118,18 +133,28 @@ class Handler(SimpleHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    def host_ok(self):
+        # Blocks DNS rebinding: a foreign hostname resolving to 127.0.0.1.
+        return self.headers.get("Host") in {f"127.0.0.1:{PORT}", f"localhost:{PORT}"}
+
     def do_OPTIONS(self):
+        if not self.host_ok():
+            return self.send_json(403, {"status": "error", "error": "bad Host header"})
         self.send_response(204)
         self.cors_headers()
         self.send_header("Content-Length", "0")
         self.end_headers()
 
     def do_GET(self):
+        if not self.host_ok():
+            return self.send_json(403, {"status": "error", "error": "bad Host header"})
         if self.path == "/api/health":
             return self.send_json(200, {"ok": True})
         return super().do_GET()
 
     def do_POST(self):
+        if not self.host_ok():
+            return self.send_json(403, {"status": "error", "error": "bad Host header"})
         if self.path != "/api/analyze":
             return self.send_json(404, {"status": "error", "error": "not found"})
         try:
@@ -150,6 +175,9 @@ class Handler(SimpleHTTPRequestHandler):
         if len(source.encode("utf-8")) > MAX_SOURCE_BYTES:
             return self.send_json(413, {"status": "error",
                                         "error": f"source is over {MAX_SOURCE_BYTES} bytes"})
+        problem = check_source(source)
+        if problem:
+            return self.send_json(200, {"status": "error", "stage": "validate", "error": problem})
         self.send_json(200, analyze_source(source))
 
 

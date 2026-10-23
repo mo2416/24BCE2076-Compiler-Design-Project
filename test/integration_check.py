@@ -51,6 +51,7 @@ def main():
             ("vulnerable", VULNERABLE, "finding"),
             ("safe", SAFE, "clean"),
             ("invalid C", INVALID, "error"),
+            ("file include blocked", '#include "/etc/passwd"\nint main(void){return 0;}\n', "error"),
         ]:
             res = post(src)
             ok = res.get("status") == expected
@@ -64,7 +65,7 @@ def main():
         print(("PASS" if ok else "FAIL"), "index.html served")
         failures += 0 if ok else 1
 
-        print(f"\n{4 - failures} passed, {failures} failed")
+        print(f"\n{5 - failures} passed, {failures} failed")
         return 1 if failures else 0
     finally:
         proc.terminate()
