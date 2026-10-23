@@ -17,38 +17,36 @@ This prototype checks a limited `getenv()` to `system()` data-flow pattern. A cl
 
 ## Run it (WSL2 Ubuntu)
 
-Needs Clang/LLVM 21 (`clang`, `opt`, LLVM CMake package), CMake and Ninja.
+Needs Clang/LLVM 21 (Clang, `opt`, LLVM CMake package), CMake and Ninja.
 
 ```bash
-cmake -S . -B build -G Ninja      # add -DLLVM_DIR=/usr/lib/llvm-21/lib/cmake/llvm if CMake cannot find LLVM
+cmake -S . -B build -G Ninja -DLLVM_DIR=/usr/lib/llvm-21/lib/cmake/llvm
 cmake --build build
-bash test/run_tests.sh            # T01 to T06
-python3 test/integration_check.py # server + /api/analyze end to end
-python3 server.py                 # then open http://127.0.0.1:8000
+bash test/run_tests.sh
+python3 test/integration_check.py
+python3 server.py
 ```
 
-If the tools are named `clang-21` and `opt-21`, set them first: `export CLANG=clang-21 OPT=opt-21`.
+Then open http://127.0.0.1:8000. If your tools are named `clang-21` and `opt-21`, set `export CLANG=clang-21 OPT=opt-21` first.
 
-**Hosted page:** https://compiler-security-analyzer.netlify.app serves the same UI. It sends code to the analyzer running on your own machine at `http://127.0.0.1:8000`, so start `python3 server.py` first. Chrome may ask once to allow the page to reach local network devices; allow it. The backend address is editable on the page.
+**Hosted page:** https://compiler-security-analyzer.netlify.app serves the UI. It sends code to an analyzer running on your own machine at `http://127.0.0.1:8000`, so start `python3 server.py` first. The hosted page does not host the C++ analyzer itself.
 
 ## Architecture
 
 ```text
-browser (web/)  --POST /api/analyze-->  server.py (127.0.0.1 only)
-                                          |  clang -M          check included files
-                                          |  clang -S -emit-llvm -O0 -g -Xclang -disable-O0-optnone
-                                          |  opt -passes=mem2reg
-                                          v
-                                        build/taint_analyzer input.opt.ll  -> JSON
+browser (web/) -> server.py (/api/analyze) -> Clang -> LLVM IR
+                                             -> opt -passes=mem2reg
+                                             -> build/taint_analyzer -> JSON finding
 ```
 
-- `src/taint_analyzer.cpp`: parses the `.ll` with `parseIRFile`, seeds taint on `getenv()` call results, propagates to a fixpoint over value-producing instructions and PHI nodes, keeps a provenance link per tainted value, and reconstructs the source-to-sink path with a cycle guard. Variable names come from the `#dbg_value` records; missing line info prints `line unknown`, never 0.
-- `server.py`: Python standard library only. Validates the request, runs the three tool steps with argument lists (`shell=False`) and a 15 s timeout each, returns the analyzer JSON. 20 KB source limit. Binds to `127.0.0.1`, checks the `Host` header, and only allows system headers to be included (checked by text and again by listing every file `clang -M` reads, each of which must sit in clang's own system include directories; `#embed` and `__has_include` are refused), so the endpoint cannot be used to read local files.
-- `web/`: plain HTML, CSS and JavaScript. Shows Potential finding, No tainted flow detected, or Analysis error. An error is never shown as a clean result.
+- `src/taint_analyzer.cpp`: reads LLVM IR, marks `getenv()` return values tainted, propagates taint through supported IR operations and PHI nodes, and reports a source-to-sink path.
+- `server.py`: lightweight Python standard-library backend that compiles and analyzes supplied C source. It does not execute submitted programs.
+- `web/`: plain HTML, CSS and JavaScript user interface.
+- `test/cases/`: six automated input cases used by `test/run_tests.sh`.
 
 ## Test results
 
-From the GitHub Actions run on Ubuntu 24.04 with Clang/LLVM 21.1.8 (`.github/workflows/ci.yml`):
+Local WSL2 test run on LLVM 21.1.8:
 
 ```text
 PASS T01_direct: finding  [getenv() -> system() arg 0]
@@ -57,34 +55,25 @@ PASS T03_copy: finding  [getenv() -> input -> copy -> cmd -> system() arg 0]
 PASS T04_overwrite: clean
 PASS T05_branch_merge: finding  [getenv() -> cmd -> if/else merge (PHI) -> system() arg 0]
 PASS T06_both_clean: clean
+
 6 passed, 0 failed
 ```
 
-Integration check through `/api/analyze`: vulnerable example gives a CWE-78 finding, safe example gives no finding, invalid C gives an error, quoted and line-spliced file includes and `#embed` are rejected (also behind a linemarker), and the page is served. 8 passed, 0 failed.
-
-Six hand-written tests show the rules work as designed. They do not measure real-world accuracy.
+The integration check also passed 8/8 checks in the local run. These are hand-built tests and do not measure real-world detection accuracy.
 
 ## Limitations
 
-- One source and one sink. No `printf`, `strcpy` or other vulnerability types.
-- Intraprocedural only. Taint does not follow values into or out of other functions, and results of unknown calls are not tracked. Unknown calls are not treated as sanitizers.
-- No pointer or alias analysis. Values stored to memory that `mem2reg` cannot promote (arrays, structs, globals) are not followed.
-- No sanitizer modelling.
+- One source and one sink only; no `printf`, `strcpy`, or other vulnerability types.
+- Intraprocedural analysis only; taint is not followed through helper functions.
+- No general pointer/alias analysis and no sanitizer modelling.
+- A finding is a potential unsafe flow, not proof of exploitability. A clean result is not proof of security.
 
-## Related work and gap
+## Research gap and project contribution
 
-Research-grade and industrial tools already provide broad taint tracking with custom source and sink models, for example CodeQL data-flow analysis for C/C++ and the Clang Static Analyzer. This project does not compete with them. As set out in the project reviews (`references/`), its contribution is a small, transparent LLVM-IR pipeline whose every step (IR generation, SSA promotion, propagation, path reconstruction) can be inspected and explained within a Compiler Design Lab project.
+Industrial and research tools already offer broader taint analysis. This project does not claim to replace them. Its contribution is an intentionally small and transparent LLVM-IR pipeline that demonstrates source-to-sink taint propagation and PHI-based branch merging in a Compiler Design Lab project. See the review documents in `references/` and the implementation report in `docs/Project_Report.md`.
 
-## Files
+## Dataset and project report
 
-```text
-PRD.md                  project requirements
-src/taint_analyzer.cpp  the analyzer
-server.py               local backend
-web/                    frontend
-test/cases/             T01 to T06
-test/run_tests.sh       test runner
-test/integration_check.py
-references/             Review 1, Review 2, PRD copy
-netlify.toml            hosts web/ on Netlify
-```
+- **Sample dataset:** `dataset/` contains six controlled C examples with expected finding/clean outcomes. They are small hand-written tests, not a real-world vulnerability benchmark.
+- **Project report:** `docs/Project_Report.md`.
+- **Course references:** `references/Review1.docx` and `references/Review2.pdf`.
