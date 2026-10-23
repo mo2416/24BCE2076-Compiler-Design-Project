@@ -1,0 +1,201 @@
+:root {
+  --bg: #f6f7f9;
+  --panel: #ffffff;
+  --border: #d0d4da;
+  --text: #1d2125;
+  --muted: #5f6770;
+  --accent: #1f5fbf;
+  --bad: #b3261e;
+  --bad-bg: #fdf0ef;
+  --ok: #1e7a3c;
+  --ok-bg: #eef7f1;
+  --warn: #8a5a00;
+  --warn-bg: #fff6e5;
+  --mono: Consolas, "DejaVu Sans Mono", Menlo, monospace;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 15px/1.5 -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+}
+
+header, main, footer {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 16px;
+}
+
+header { padding-top: 20px; }
+h1 { font-size: 20px; margin: 0 0 4px; }
+.sub { margin: 0 0 16px; color: var(--muted); }
+
+main {
+  display: grid;
+  grid-template-columns: 1.15fr 1fr;
+  gap: 16px;
+  align-items: start;
+}
+
+@media (max-width: 860px) {
+  main { grid-template-columns: 1fr; }
+}
+
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 12px;
+  min-width: 0;
+}
+
+.panel-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+
+.panel-head label, .panel-head .label { font-weight: 600; }
+.hint { color: var(--muted); font-size: 13px; }
+
+textarea {
+  width: 100%;
+  min-height: 380px;
+  resize: vertical;
+  font: 13.5px/1.45 var(--mono);
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  tab-size: 4;
+}
+
+textarea:focus, input:focus, button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+button {
+  font: inherit;
+  padding: 6px 12px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: #f1f3f5;
+  color: var(--text);
+  cursor: pointer;
+}
+
+button:hover { background: #e6e9ec; }
+button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+button.primary:hover { background: #194f9f; }
+button:disabled { opacity: 0.6; cursor: not-allowed; }
+
+.backend {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 12px;
+  font-size: 13px;
+}
+
+.backend input {
+  flex: 1 1 200px;
+  font: 13px var(--mono);
+  padding: 4px 6px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+}
+
+.dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #b0b6bd;
+  display: inline-block;
+}
+.dot.up { background: var(--ok); }
+.dot.down { background: var(--bad); }
+
+.muted { color: var(--muted); }
+
+.result {
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 12px;
+  min-height: 120px;
+}
+
+.result.finding { border-color: var(--bad); background: var(--bad-bg); }
+.result.clean { border-color: var(--ok); background: var(--ok-bg); }
+.result.error { border-color: var(--warn); background: var(--warn-bg); }
+
+.status { font-weight: 700; font-size: 16px; margin: 0 0 8px; }
+.finding .status { color: var(--bad); }
+.clean .status { color: var(--ok); }
+.error .status { color: var(--warn); }
+
+.finding-block + .finding-block {
+  border-top: 1px solid var(--border);
+  margin-top: 10px;
+  padding-top: 10px;
+}
+
+dl {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 2px 12px;
+  margin: 0 0 8px;
+}
+dt { color: var(--muted); }
+dd { margin: 0; }
+
+.flow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  font: 13px var(--mono);
+}
+
+.step {
+  border: 1px solid var(--border);
+  background: #fff;
+  border-radius: 3px;
+  padding: 2px 6px;
+}
+.step.source { border-color: var(--bad); }
+.step.sink { border-color: var(--bad); font-weight: 700; }
+.step.operation { color: var(--muted); }
+.arrow { color: var(--muted); }
+
+pre.err {
+  white-space: pre-wrap;
+  word-break: break-word;
+  font: 12.5px/1.4 var(--mono);
+  margin: 0;
+}
+
+code { font-family: var(--mono); font-size: 0.92em; }
+
+.scope {
+  margin-top: 12px;
+  font-size: 13px;
+  color: var(--muted);
+  border-top: 1px solid var(--border);
+  padding-top: 10px;
+}
+
+footer { padding-top: 12px; padding-bottom: 24px; font-size: 13px; }

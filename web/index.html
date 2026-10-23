@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Compiler-Based Static Analyzer</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header>
+    <h1>Compiler-Based Static Analyzer for Security Vulnerability Detection</h1>
+    <p class="sub">Taint and data-flow analysis over LLVM IR. BCSE307P Compiler Design Lab, Mohammed Asif A (24BCE2076).</p>
+  </header>
+
+  <main>
+    <section class="panel">
+      <div class="panel-head">
+        <label for="code">C source</label>
+        <span class="hint">clang &rarr; LLVM IR &rarr; mem2reg &rarr; taint analyzer</span>
+      </div>
+      <textarea id="code" spellcheck="false" autocomplete="off"></textarea>
+      <div class="buttons">
+        <button id="analyze" class="primary" type="button">Analyze</button>
+        <button id="load-vuln" type="button">Load vulnerable example</button>
+        <button id="load-safe" type="button">Load safe example</button>
+        <button id="clear" type="button">Clear</button>
+      </div>
+      <div class="backend">
+        <label for="backend-url">Backend</label>
+        <input id="backend-url" type="text" spellcheck="false">
+        <span id="backend-status" class="dot" title="not checked"></span>
+        <span id="backend-text" class="muted">not checked</span>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-head"><span class="label">Result</span></div>
+      <div id="result" class="result idle">
+        <p class="muted">No analysis yet. Press <b>Analyze</b> to run the analyzer on the code.</p>
+      </div>
+      <div class="scope">
+        <b>Scope:</b> This prototype checks a limited <code>getenv()</code> &rarr; <code>system()</code> data-flow pattern.
+        A clean result does not prove code is secure. Supported flows: direct use, SSA copies and casts,
+        pointer offsets, and an <code>if/else</code> merge (PHI node). Not covered: other vulnerability types,
+        pointer aliasing, loops through memory, calls into other functions, sanitizers.
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <p class="muted">The submitted code is compiled to LLVM IR and analyzed. It is never executed.</p>
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>
