@@ -42,15 +42,22 @@ ALLOWED_ORIGINS.update(o for o in os.environ.get("ALLOWED_ORIGINS", "").split(",
 
 # Only plain system headers like <stdlib.h>. Quoted, absolute or ../ includes
 # could make clang read local files and echo them back in its diagnostics.
+# This text check gives a clear message; the clang -MM check in
+# analyze_source is the guard that cannot be dodged with comments.
 SAFE_INCLUDE = re.compile(r"^\s*#\s*include\s*<[A-Za-z0-9_]+(/[A-Za-z0-9_]+)*\.h>\s*$")
-DIRECTIVE = re.compile(r"^\s*(#|%:)\s*(include|include_next|import|embed)\b|__has_include|__has_embed")
-SYSTEM_HEADER_DIRS = ("/usr/include/", "/usr/lib/", "/usr/local/include/", "/opt/homebrew/", "/Library/Developer/")
+INCLUDE = re.compile(r"^\s*(#|%:)\s*include\b")
+# Tokens that read files without showing up in -MM. A comment cannot split a
+# token, so after undoing backslash-newline splices a plain search is enough.
+BANNED_TOKENS = re.compile(r"\b(embed|include_next|import|__has_include\w*|__has_embed)\b")
+LINE_SPLICE = re.compile(r"\\\r?\n")
 
 
 def check_source(source):
     """Return an error message if the source uses a disallowed directive."""
+    if BANNED_TOKENS.search(LINE_SPLICE.sub("", source)):
+        return "#embed, #import, #include_next and __has_include are not allowed"
     for n, line in enumerate(source.splitlines(), 1):
-        if DIRECTIVE.search(line) and not SAFE_INCLUDE.match(line):
+        if INCLUDE.search(line) and not SAFE_INCLUDE.match(line):
             return f"line {n}: only system headers like #include <stdlib.h> are allowed"
     return None
 
@@ -77,17 +84,17 @@ def analyze_source(source):
             f.write(source)
 
         # Second include guard, immune to comment and line-splice tricks:
-        # ask the preprocessor which files the source pulls in.
-        deps = run_step([CLANG, "-M", "-fno-caret-diagnostics", "input.c"], work)
+        # -MM lists every included file that is NOT a system header, so
+        # anything besides input.c itself means a non-system include.
+        deps = run_step([CLANG, "-MM", "-fno-caret-diagnostics", "input.c"], work)
         if deps.returncode != 0:
             own = [l for l in deps.stderr.splitlines() if l.startswith("input.c:")]
             return {"status": "error", "stage": "preprocess",
                     "error": trim("\n".join(own)) or "preprocessing failed"}
         files = deps.stdout.replace("\\\n", " ").split(":", 1)[-1].split()
-        for path in files:
-            if path != "input.c" and not os.path.realpath(path).startswith(SYSTEM_HEADER_DIRS):
-                return {"status": "error", "stage": "validate",
-                        "error": "only system headers like <stdlib.h> may be included"}
+        if any(path != "input.c" for path in files):
+            return {"status": "error", "stage": "validate",
+                    "error": "only system headers like <stdlib.h> may be included"}
 
         # -disable-O0-optnone lets mem2reg run on -O0 output.
         clang = run_step([
