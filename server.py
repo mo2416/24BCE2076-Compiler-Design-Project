@@ -62,6 +62,29 @@ def check_source(source):
     return None
 
 
+_system_dirs = None
+
+
+def system_include_dirs():
+    """The <...> search directories clang itself reports, as real paths."""
+    global _system_dirs
+    if _system_dirs is None:
+        res = subprocess.run([CLANG, "-E", "-v", "-x", "c", os.devnull],
+                             capture_output=True, text=True, timeout=STEP_TIMEOUT_S)
+        dirs, inside = [], False
+        for line in res.stderr.splitlines():
+            if line.startswith("#include <...> search starts here"):
+                inside = True
+            elif line.startswith("End of search list"):
+                break
+            elif inside:
+                path = line.strip().split(" (")[0]
+                if os.path.isabs(path):
+                    dirs.append(os.path.realpath(path))
+        _system_dirs = dirs
+    return _system_dirs
+
+
 def run_step(args, cwd):
     """Run one pipeline step with an argument list (never a shell)."""
     return subprocess.run(
@@ -83,18 +106,23 @@ def analyze_source(source):
         with open(os.path.join(work, "input.c"), "w", encoding="utf-8") as f:
             f.write(source)
 
-        # Second include guard, immune to comment and line-splice tricks:
-        # -MM lists every included file that is NOT a system header, so
-        # anything besides input.c itself means a non-system include.
-        deps = run_step([CLANG, "-MM", "-fno-caret-diagnostics", "input.c"], work)
+        # Second include guard, immune to comment, line-splice and linemarker
+        # tricks: -M lists every file the preprocessor read, and each one
+        # must sit inside clang's own system include directories.
+        deps = run_step([CLANG, "-M", "-fno-caret-diagnostics", "input.c"], work)
         if deps.returncode != 0:
             own = [l for l in deps.stderr.splitlines() if l.startswith("input.c:")]
             return {"status": "error", "stage": "preprocess",
                     "error": trim("\n".join(own)) or "preprocessing failed"}
         files = deps.stdout.replace("\\\n", " ").split(":", 1)[-1].split()
-        if any(path != "input.c" for path in files):
-            return {"status": "error", "stage": "validate",
-                    "error": "only system headers like <stdlib.h> may be included"}
+        allowed = system_include_dirs()
+        for path in files:
+            if path == "input.c":
+                continue
+            real = os.path.realpath(os.path.join(work, path))
+            if not any(os.path.commonpath([real, d]) == d for d in allowed):
+                return {"status": "error", "stage": "validate",
+                        "error": "only system headers like <stdlib.h> may be included"}
 
         # -disable-O0-optnone lets mem2reg run on -O0 output.
         clang = run_step([
